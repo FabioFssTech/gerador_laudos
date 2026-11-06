@@ -33,6 +33,15 @@ $('historicoLista').onclick=e=>{const id=e.target.dataset.edit||e.target.dataset
 $('configForm').onsubmit=async e=>{e.preventDefault();['empresaNome','empresaDocumento','empresaTelefone','empresaEmail','empresaEndereco','logoPosicao','marcaAgua'].forEach(k=>db.config[k]=$(k).value.trim());const f=$('logoInput').files[0];if(f){db.config.logo=(await readImages([f]))[0]}save(db);render();$('configDialog').close();toast('Configurações salvas.')};
 $('btnExportar').onclick=()=>downloadBackup(db);$('importarArquivo').onchange=async e=>{try{const imported=await readBackup(e.target.files[0]);if(confirm(`Importar ${imported.laudos.length} laudo(s) e substituir os dados atuais?`)){db=imported;delete db.exportadoEm;save(db);newDoc();renderHistory();$('configDialog').close();toast('Backup importado.')}}catch(err){alert(err.message)}e.target.value=''};
 async function ensureSaved(){if(!$('clienteNome').value||!$('equipamento').value||!$('diagnostico').value||!$('conclusao').value||!$('responsavel').value){$('laudoForm').reportValidity();throw new Error('Preencha os campos obrigatórios.')}return await persist()}
+$('btnTxt').onclick = async () => {
+  try {
+    const laudo = await ensureSaved();
+    baixarTxtLaudo(laudo, db.config);
+    toast('Arquivo TXT gerado.');
+  } catch (erro) {
+    toast(erro.message);
+  }
+};
 $('btnPdf').onclick=async()=>{try{const o=await ensureSaved();await makePdf($('documento'),`Laudo-OS-${o.numero}.pdf`);toast('PDF gerado.')}catch(e){toast(e.message)}};
 $('btnPdfEmail').onclick=async()=>{try{const o=await ensureSaved();await makePdf($('documento'),`Laudo-OS-${o.numero}.pdf`);alert('O PDF foi baixado. Seu aplicativo de e-mail será aberto; anexe manualmente o PDF recém-baixado.');prepareEmail(o,db.config.empresaEmail||'fsbatepap@gmail.com')}catch(e){toast(e.message)}};
 newDoc();renderHistory();
