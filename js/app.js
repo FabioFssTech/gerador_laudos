@@ -3,6 +3,7 @@ import {sha256,canonical,shortHash} from './hash.js';
 import {downloadBackup,readBackup} from './backup.js';
 import {makePdf,printDocument} from './pdf.js';
 import {prepareEmail} from './email.js';
+import {baixarTxtLaudo} from './txt.js';
 
 let db=load(), fotos=[];
 const $=id=>document.getElementById(id);
