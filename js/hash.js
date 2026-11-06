@@ -1,0 +1,3 @@
+export async function sha256(value){const bytes=new TextEncoder().encode(value);const digest=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase()}
+export function canonical(laudo){const clone={...laudo};delete clone.hash;delete clone.fotos;return JSON.stringify(clone,Object.keys(clone).sort())}
+export function shortHash(hash){return hash.match(/.{1,4}/g).slice(0,4).join('-')}

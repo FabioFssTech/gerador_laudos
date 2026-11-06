@@ -1,0 +1,3 @@
+export function downloadBackup(data){const payload={...data,exportadoEm:new Date().toISOString(),tipo:'backup-gerador-laudos'};download(JSON.stringify(payload,null,2),`backup-laudos-${new Date().toISOString().slice(0,10)}.json`,'application/json')}
+export async function readBackup(file){const text=await file.text();const parsed=JSON.parse(text);if(parsed.tipo!=='backup-gerador-laudos'||!Array.isArray(parsed.laudos)||!parsed.config)throw new Error('Arquivo de backup inválido.');return parsed}
+export function download(content,name,type){const blob=content instanceof Blob?content:new Blob([content],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}

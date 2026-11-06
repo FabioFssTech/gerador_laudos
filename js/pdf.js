@@ -1,0 +1,2 @@
+export async function makePdf(element,filename,download=true){if(!window.html2pdf)throw new Error('Biblioteca de PDF não carregada. Verifique a internet.');const options={margin:0,filename,image:{type:'jpeg',quality:.96},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};const worker=window.html2pdf().set(options).from(element);if(download){await worker.save();return null}return await worker.outputPdf('blob')}
+export function printDocument(){window.print()}
