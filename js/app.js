@@ -28,40 +28,97 @@ function syncActiveEquipmentFromDom() {
 
   calcEq(equipamento);
 }
-function bindEditor(){$('equipmentEditor').querySelectorAll('[data-p]').forEach((campo) => {
-  campo.addEventListener('input', () => {
-    const linha = campo.closest('[data-piece]');
-    const indice = Number(linha.dataset.piece);
-    const peca = os.equipamentos[active].pecas[indice];
+function bindEditor() {
+  const editor = $('equipmentEditor');
 
-    peca[campo.dataset.p] =
-      campo.dataset.p === 'descricao' ? campo.value : num(campo.value);
+  editor.querySelectorAll('[data-eq]').forEach((campo) => {
+    campo.addEventListener('input', () => {
+      const equipamento = os.equipamentos[active];
+      equipamento[campo.dataset.eq] =
+        campo.dataset.eq === 'maoDeObra' ? num(campo.value) : campo.value;
 
-    const subtotal = linha.querySelector('.piece-subtotal');
-    if (subtotal) {
-      subtotal.textContent = `Subtotal: ${money(pieceTotal(peca))}`;
-    }
+      calcEq(equipamento);
+      renderTabs();
+      renderPages();
+    });
+  });
 
-    calcEq(os.equipamentos[active]);
+  editor.querySelectorAll('[data-p]').forEach((campo) => {
+    campo.addEventListener('input', () => {
+      const linha = campo.closest('[data-piece]');
+      const indice = Number(linha.dataset.piece);
+      const peca = os.equipamentos[active].pecas[indice];
 
-    const total = document.getElementById('eqPartsTotal');
-    if (total) {
-      total.textContent = money(os.equipamentos[active].totalPecas);
-    }
+      peca[campo.dataset.p] =
+        campo.dataset.p === 'descricao' ? campo.value : num(campo.value);
 
+      const subtotal = linha.querySelector('.piece-subtotal');
+      if (subtotal) {
+        subtotal.textContent = `Subtotal: ${money(pieceTotal(peca))}`;
+      }
+
+      calcEq(os.equipamentos[active]);
+      const total = $('eqPartsTotal');
+      if (total) total.textContent = money(os.equipamentos[active].totalPecas);
+      renderPages();
+    });
+  });
+
+  $('btnAddPiece').onclick = () => {
+    syncActiveEquipmentFromDom();
+    os.equipamentos[active].pecas.push({
+      quantidade: 1,
+      descricao: '',
+      valorUnitario: 0
+    });
+    renderEditor();
     renderPages();
+  };
+
+  editor.querySelectorAll('[data-rm-piece]').forEach((botao) => {
+    botao.onclick = () => {
+      syncActiveEquipmentFromDom();
+      os.equipamentos[active].pecas.splice(Number(botao.dataset.rmPiece), 1);
+      renderEditor();
+      renderPages();
+    };
   });
-});
-});$('btnAddPiece').onclick = () => {
-  syncActiveEquipmentFromDom();
-  os.equipamentos[active].pecas.push({
-    quantidade: 1,
-    descricao: '',
-    valorUnitario: 0
+
+  const removerEquipamento = $('btnRemoveEquip');
+  if (removerEquipamento) {
+    removerEquipamento.onclick = () => {
+      syncActiveEquipmentFromDom();
+      if (!confirm('Remover este equipamento?')) return;
+      os.equipamentos.splice(active, 1);
+      active = Math.max(0, active - 1);
+      renderAll();
+    };
+  }
+
+  $('eqFotos').onchange = async (evento) => {
+    syncActiveEquipmentFromDom();
+    try {
+      const imagens = await readImages(evento.target.files, 4);
+      os.equipamentos[active].fotos = [
+        ...os.equipamentos[active].fotos,
+        ...imagens
+      ].slice(0, 4);
+      renderEditor();
+      renderPages();
+    } catch (erro) {
+      toast(erro.message);
+    }
+  };
+
+  editor.querySelectorAll('[data-rm-photo]').forEach((botao) => {
+    botao.onclick = () => {
+      syncActiveEquipmentFromDom();
+      os.equipamentos[active].fotos.splice(Number(botao.dataset.rmPhoto), 1);
+      renderEditor();
+      renderPages();
+    };
   });
-  renderEditor();
-  renderPages();
-};$('equipmentEditor').querySelectorAll('[data-rm-piece]').forEach(b=>b.onclick=()=>{os.equipamentos[active].pecas.splice(+b.dataset.rmPiece,1);renderEditor();renderPages()});$('btnRemoveEquip')&&($('btnRemoveEquip').onclick=()=>{if(confirm('Remover este equipamento?')){os.equipamentos.splice(active,1);active=Math.max(0,active-1);renderAll()}});$('eqFotos').onchange=async e=>{const imgs=await readImages(e.target.files,4);os.equipamentos[active].fotos=[...os.equipamentos[active].fotos,...imgs].slice(0,4);renderEditor();renderPages()};$('equipmentEditor').querySelectorAll('[data-rm-photo]').forEach(b=>b.onclick=()=>{os.equipamentos[active].fotos.splice(+b.dataset.rmPhoto,1);renderEditor();renderPages()})}
+}
 function header(title,sub){const c=db.config,logo=c.logo?`<img src="${c.logo}" alt="Logo">`:'<span></span>';return `<div class="watermark">${esc(c.marcaAgua||'DOCUMENTO ORIGINAL')}</div><div class="page-content"><header class="doc-header ${c.logoPosicao==='right'?'logo-right':''}">${logo}<div class="doc-company"><strong>${esc(c.empresaNome||'Empresa / profissional')}</strong><span>${esc([c.empresaDocumento,c.empresaTelefone,c.empresaEmail,c.empresaEndereco].filter(Boolean).join(' • '))}</span></div><div class="doc-title"><h1>${title}</h1><b>${sub}</b></div></header><div class="doc-meta"><span>Emissão: ${esc(os.data)} ${esc(os.hora)}</span><span>OS ${esc(os.numero)}</span></div>`}function clientHtml(){const c=os.cliente;return `<section><h3>Dados do cliente</h3><div class="doc-grid">${inf('Nome',c.nome)}${inf('CPF/CNPJ',c.documento)}${inf('Telefone',c.telefone)}${inf('E-mail',c.email)}${inf('Endereço',c.endereco)}</div></section>`}function inf(l,v){return v?`<div><b>${esc(l)}</b>${esc(v)}</div>`:''}function block(l,v){return v?`<div class="doc-block"><b>${esc(l)}</b>${esc(v)}</div>`:''}function footer(i,total){return `<div class="doc-footer"><span>Página ${i} de ${total}</span><span>Hash: ${shortHash(os.hash)}</span></div></div>`}
 function equipmentPage(e,i,total){calcEq(e);const rows=e.pecas.length?e.pecas.map(p=>`<tr><td>${esc(p.quantidade)}</td><td>${esc(p.descricao)}</td><td class="money">${money(p.valorUnitario)}</td><td class="money">${money(pieceTotal(p))}</td></tr>`).join(''):'<tr><td colspan="4">Nenhuma peça informada</td></tr>';return `<article class="a4-page">${header('LAUDO TÉCNICO',`OS ${esc(os.numero)} • Equipamento ${i+1}`)}${clientHtml()}<section><h3>Identificação do equipamento</h3><div class="doc-grid">${inf('Equipamento',e.nome)}${inf('Marca / Modelo',e.marcaModelo)}${inf('Número de série',e.numeroSerie)}</div></section><section><h3>Informações técnicas</h3>${block('Problema relatado',e.problema)}${block('Defeito constatado',e.defeito)}${block('Diagnóstico',e.diagnostico)}${block('Procedimentos realizados',e.procedimentos)}${block('Conclusão técnica',e.conclusao)}</section><section><h3>Peças utilizadas</h3><table class="parts-table"><thead><tr><th>Qtd.</th><th>Descrição</th><th>Unitário</th><th>Subtotal</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><th colspan="3">Total das peças</th><th class="money">${money(e.totalPecas)}</th></tr></tfoot></table><div class="doc-block"><b>Mão de obra</b>${money(e.maoDeObra)}</div></section>${e.fotos.length?`<section><h3>Fotos</h3><div class="doc-photos">${e.fotos.map(x=>`<img src="${x}" alt="Foto do serviço">`).join('')}</div></section>`:''}<div class="signatures"><div><span></span><p>Responsável técnico</p></div><div><span></span><p>Cliente / responsável</p></div></div>${footer(i+1,total)}</article>`}
 function summaryPage(total){let tp=0,tm=0;const items=os.equipamentos.map((e,i)=>{calcEq(e);tp+=e.totalPecas;tm+=num(e.maoDeObra);return `<div class="summary-item"><h4>Equipamento ${i+1}: ${esc(e.nome||'Não informado')}</h4>${block('Procedimentos realizados',e.procedimentos)}${block('Peças utilizadas',e.pecas.map(p=>`${p.quantidade}x ${p.descricao} (${money(pieceTotal(p))})`).join('; ')||'Nenhuma')}${block('Conclusão técnica',e.conclusao)}<div class="doc-grid">${inf('Mão de obra',money(e.maoDeObra))}${inf('Total das peças',money(e.totalPecas))}</div></div>`}).join('');return `<article class="a4-page">${header('RELATÓRIO FINAL',`OS ${esc(os.numero)}`)}${clientHtml()}<section><h3>Resumo dos equipamentos</h3>${items}</section><section><h3>Resumo financeiro</h3><table class="totals"><tr><td>Total da mão de obra</td><td>${money(tm)}</td></tr><tr><td>Total das peças</td><td>${money(tp)}</td></tr><tr><td>Valor geral da OS</td><td>${money(tm+tp)}</td></tr></table></section><div class="signatures"><div><span></span><p>Responsável técnico</p></div><div><span></span><p>Cliente / responsável</p></div></div>${footer(total,total)}</article>`}
