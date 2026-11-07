@@ -4,14 +4,38 @@ function syncBaseFromForm(){os.id=$('id').value;os.numero=$('numero').value.trim
 function pieceTotal(p){return num(p.quantidade)*num(p.valorUnitario)}function calcEq(e){e.totalPecas=e.pecas.reduce((s,p)=>s+pieceTotal(p),0);return e.totalPecas}function renderTabs(){$('equipmentTabs').innerHTML=os.equipamentos.map((e,i)=>`<button type="button" class="tab ${i===active?'active':''}" data-tab="${i}">${i+1}. ${esc(e.nome||'Novo equipamento')}</button>`).join('')}
 function renderEditor(){const e=os.equipamentos[active];$('equipmentEditor').innerHTML=`<div class="equipment-card"><div class="equipment-actions">${os.equipamentos.length>1?'<button type="button" class="danger" id="btnRemoveEquip">Remover equipamento</button>':''}</div><div class="grid cols-3"><label>Equipamento<input data-eq="nome" value="${esc(e.nome)}" required></label><label>Marca / Modelo<input data-eq="marcaModelo" value="${esc(e.marcaModelo)}"></label><label>Número de série<input data-eq="numeroSerie" value="${esc(e.numeroSerie)}"></label></div><label>Problema relatado<textarea data-eq="problema" rows="2">${esc(e.problema)}</textarea></label><label>Defeito constatado<textarea data-eq="defeito" rows="2">${esc(e.defeito)}</textarea></label><label>Diagnóstico<textarea data-eq="diagnostico" rows="3" required>${esc(e.diagnostico)}</textarea></label><label>Procedimentos realizados<textarea data-eq="procedimentos" rows="3">${esc(e.procedimentos)}</textarea></label><h2>Peças utilizadas</h2><div id="pieceRows">${e.pecas.map((p,i)=>pieceHtml(p,i)).join('')}</div><button type="button" id="btnAddPiece">+ Adicionar peça</button><label>Conclusão técnica<textarea data-eq="conclusao" rows="3" required>${esc(e.conclusao)}</textarea></label><label>Valor da mão de obra (R$)<input data-eq="maoDeObra" inputmode="decimal" value="${esc(e.maoDeObra||'')}"></label><p><strong>Total das peças deste equipamento:</strong> <span id="eqPartsTotal">${money(calcEq(e))}</span></p><label>Fotos (até 4 por equipamento)<input id="eqFotos" type="file" accept="image/*" multiple></label><div class="thumbs">${e.fotos.map((x,i)=>`<div class="thumb"><img src="${x}"><button type="button" data-rm-photo="${i}">×</button></div>`).join('')}</div></div>`;bindEditor()}
 function pieceHtml(p,i){return `<div class="piece-row" data-piece="${i}"><label>Quantidade<input data-p="quantidade" type="number" min="0" step="1" value="${esc(p.quantidade)}"></label><label>Descrição<input data-p="descricao" value="${esc(p.descricao)}"></label><label>Valor unitário<input data-p="valorUnitario" inputmode="decimal" value="${esc(p.valorUnitario)}"></label><button type="button" class="danger" data-rm-piece="${i}">Excluir</button><div class="piece-subtotal">Subtotal: ${money(pieceTotal(p))}</div></div>`}
-function bindEditor(){$('equipmentEditor').querySelectorAll('[data-p]').forEach((el) => {
-  el.addEventListener('input', () => {
-    const linha = el.closest('[data-piece]');
+function syncActiveEquipmentFromDom() {
+  const equipamento = os.equipamentos[active];
+  const editor = document.getElementById('equipmentEditor');
+
+  if (!equipamento || !editor) return;
+
+  editor.querySelectorAll('[data-eq]').forEach((campo) => {
+    equipamento[campo.dataset.eq] =
+      campo.dataset.eq === 'maoDeObra' ? num(campo.value) : campo.value;
+  });
+
+  editor.querySelectorAll('[data-piece]').forEach((linha) => {
+    const indice = Number(linha.dataset.piece);
+    const peca = equipamento.pecas[indice];
+    if (!peca) return;
+
+    linha.querySelectorAll('[data-p]').forEach((campo) => {
+      peca[campo.dataset.p] =
+        campo.dataset.p === 'descricao' ? campo.value : num(campo.value);
+    });
+  });
+
+  calcEq(equipamento);
+}
+function bindEditor(){$('equipmentEditor').querySelectorAll('[data-p]').forEach((campo) => {
+  campo.addEventListener('input', () => {
+    const linha = campo.closest('[data-piece]');
     const indice = Number(linha.dataset.piece);
     const peca = os.equipamentos[active].pecas[indice];
 
-    peca[el.dataset.p] =
-      el.dataset.p === 'descricao' ? el.value : num(el.value);
+    peca[campo.dataset.p] =
+      campo.dataset.p === 'descricao' ? campo.value : num(campo.value);
 
     const subtotal = linha.querySelector('.piece-subtotal');
     if (subtotal) {
@@ -27,10 +51,64 @@ function bindEditor(){$('equipmentEditor').querySelectorAll('[data-p]').forEach(
 
     renderPages();
   });
-});$('btnAddPiece').onclick=()=>{os.equipamentos[active].pecas.push({quantidade:1,descricao:'',valorUnitario:0});renderEditor();renderPages()};$('equipmentEditor').querySelectorAll('[data-rm-piece]').forEach(b=>b.onclick=()=>{os.equipamentos[active].pecas.splice(+b.dataset.rmPiece,1);renderEditor();renderPages()});$('btnRemoveEquip')&&($('btnRemoveEquip').onclick=()=>{if(confirm('Remover este equipamento?')){os.equipamentos.splice(active,1);active=Math.max(0,active-1);renderAll()}});$('eqFotos').onchange=async e=>{const imgs=await readImages(e.target.files,4);os.equipamentos[active].fotos=[...os.equipamentos[active].fotos,...imgs].slice(0,4);renderEditor();renderPages()};$('equipmentEditor').querySelectorAll('[data-rm-photo]').forEach(b=>b.onclick=()=>{os.equipamentos[active].fotos.splice(+b.dataset.rmPhoto,1);renderEditor();renderPages()})}
+});
+});$('btnAddPiece').onclick = () => {
+  syncActiveEquipmentFromDom();
+  os.equipamentos[active].pecas.push({
+    quantidade: 1,
+    descricao: '',
+    valorUnitario: 0
+  });
+  renderEditor();
+  renderPages();
+};$('equipmentEditor').querySelectorAll('[data-rm-piece]').forEach(b=>b.onclick=()=>{os.equipamentos[active].pecas.splice(+b.dataset.rmPiece,1);renderEditor();renderPages()});$('btnRemoveEquip')&&($('btnRemoveEquip').onclick=()=>{if(confirm('Remover este equipamento?')){os.equipamentos.splice(active,1);active=Math.max(0,active-1);renderAll()}});$('eqFotos').onchange=async e=>{const imgs=await readImages(e.target.files,4);os.equipamentos[active].fotos=[...os.equipamentos[active].fotos,...imgs].slice(0,4);renderEditor();renderPages()};$('equipmentEditor').querySelectorAll('[data-rm-photo]').forEach(b=>b.onclick=()=>{os.equipamentos[active].fotos.splice(+b.dataset.rmPhoto,1);renderEditor();renderPages()})}
 function header(title,sub){const c=db.config,logo=c.logo?`<img src="${c.logo}" alt="Logo">`:'<span></span>';return `<div class="watermark">${esc(c.marcaAgua||'DOCUMENTO ORIGINAL')}</div><div class="page-content"><header class="doc-header ${c.logoPosicao==='right'?'logo-right':''}">${logo}<div class="doc-company"><strong>${esc(c.empresaNome||'Empresa / profissional')}</strong><span>${esc([c.empresaDocumento,c.empresaTelefone,c.empresaEmail,c.empresaEndereco].filter(Boolean).join(' • '))}</span></div><div class="doc-title"><h1>${title}</h1><b>${sub}</b></div></header><div class="doc-meta"><span>Emissão: ${esc(os.data)} ${esc(os.hora)}</span><span>OS ${esc(os.numero)}</span></div>`}function clientHtml(){const c=os.cliente;return `<section><h3>Dados do cliente</h3><div class="doc-grid">${inf('Nome',c.nome)}${inf('CPF/CNPJ',c.documento)}${inf('Telefone',c.telefone)}${inf('E-mail',c.email)}${inf('Endereço',c.endereco)}</div></section>`}function inf(l,v){return v?`<div><b>${esc(l)}</b>${esc(v)}</div>`:''}function block(l,v){return v?`<div class="doc-block"><b>${esc(l)}</b>${esc(v)}</div>`:''}function footer(i,total){return `<div class="doc-footer"><span>Página ${i} de ${total}</span><span>Hash: ${shortHash(os.hash)}</span></div></div>`}
 function equipmentPage(e,i,total){calcEq(e);const rows=e.pecas.length?e.pecas.map(p=>`<tr><td>${esc(p.quantidade)}</td><td>${esc(p.descricao)}</td><td class="money">${money(p.valorUnitario)}</td><td class="money">${money(pieceTotal(p))}</td></tr>`).join(''):'<tr><td colspan="4">Nenhuma peça informada</td></tr>';return `<article class="a4-page">${header('LAUDO TÉCNICO',`OS ${esc(os.numero)} • Equipamento ${i+1}`)}${clientHtml()}<section><h3>Identificação do equipamento</h3><div class="doc-grid">${inf('Equipamento',e.nome)}${inf('Marca / Modelo',e.marcaModelo)}${inf('Número de série',e.numeroSerie)}</div></section><section><h3>Informações técnicas</h3>${block('Problema relatado',e.problema)}${block('Defeito constatado',e.defeito)}${block('Diagnóstico',e.diagnostico)}${block('Procedimentos realizados',e.procedimentos)}${block('Conclusão técnica',e.conclusao)}</section><section><h3>Peças utilizadas</h3><table class="parts-table"><thead><tr><th>Qtd.</th><th>Descrição</th><th>Unitário</th><th>Subtotal</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><th colspan="3">Total das peças</th><th class="money">${money(e.totalPecas)}</th></tr></tfoot></table><div class="doc-block"><b>Mão de obra</b>${money(e.maoDeObra)}</div></section>${e.fotos.length?`<section><h3>Fotos</h3><div class="doc-photos">${e.fotos.map(x=>`<img src="${x}" alt="Foto do serviço">`).join('')}</div></section>`:''}<div class="signatures"><div><span></span><p>Responsável técnico</p></div><div><span></span><p>Cliente / responsável</p></div></div>${footer(i+1,total)}</article>`}
 function summaryPage(total){let tp=0,tm=0;const items=os.equipamentos.map((e,i)=>{calcEq(e);tp+=e.totalPecas;tm+=num(e.maoDeObra);return `<div class="summary-item"><h4>Equipamento ${i+1}: ${esc(e.nome||'Não informado')}</h4>${block('Procedimentos realizados',e.procedimentos)}${block('Peças utilizadas',e.pecas.map(p=>`${p.quantidade}x ${p.descricao} (${money(pieceTotal(p))})`).join('; ')||'Nenhuma')}${block('Conclusão técnica',e.conclusao)}<div class="doc-grid">${inf('Mão de obra',money(e.maoDeObra))}${inf('Total das peças',money(e.totalPecas))}</div></div>`}).join('');return `<article class="a4-page">${header('RELATÓRIO FINAL',`OS ${esc(os.numero)}`)}${clientHtml()}<section><h3>Resumo dos equipamentos</h3>${items}</section><section><h3>Resumo financeiro</h3><table class="totals"><tr><td>Total da mão de obra</td><td>${money(tm)}</td></tr><tr><td>Total das peças</td><td>${money(tp)}</td></tr><tr><td>Valor geral da OS</td><td>${money(tm+tp)}</td></tr></table></section><div class="signatures"><div><span></span><p>Responsável técnico</p></div><div><span></span><p>Cliente / responsável</p></div></div>${footer(total,total)}</article>`}
-function renderPages(){syncBaseFromForm();const total=os.equipamentos.length+1;$('documentPages').innerHTML=os.equipamentos.map((e,i)=>equipmentPage(e,i,total)).join('')+summaryPage(total)}function renderAll(){renderTabs();renderEditor();renderPages()}async function enrich(){syncBaseFromForm();os.id=os.id||uid();os.equipamentos.forEach(calcEq);os.codigo=`${os.numero}`;os.hash=await sha256(canonical(os));os.atualizadoEm=new Date().toISOString();return os}async function persist(){await enrich();const i=db.ordens.findIndex(x=>x.id===os.id);if(i>=0)db.ordens[i]=structuredClone(os);else{db.ordens.unshift(structuredClone(os));db.sequencia++}save(db);$('id').value=os.id;$('saveStatus').textContent='Salva às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});renderHistory();renderPages();toast('OS salva.');return os}function validate(){syncBaseFromForm();if(!os.cliente.nome)return'Informe o cliente.';for(let i=0;i<os.equipamentos.length;i++){const e=os.equipamentos[i];if(!e.nome||!e.diagnostico||!e.conclusao)return`Preencha equipamento, diagnóstico e conclusão do equipamento ${i+1}.`}return''}async function ensure(){const x=validate();if(x)throw new Error(x);return persist()}
+function renderPages(){syncBaseFromForm();const total=os.equipamentos.length+1;$('documentPages').innerHTML=os.equipamentos.map((e,i)=>equipmentPage(e,i,total)).join('')+summaryPage(total)}function renderAll(){renderTabs();renderEditor();renderPages()}async function enrich(){syncBaseFromForm();syncActiveEquipmentFromDom();os.id=os.id||uid();os.equipamentos.forEach(calcEq);os.codigo=`${os.numero}`;os.hash=await sha256(canonical(os));os.atualizadoEm=new Date().toISOString();return os}async function persist(){await enrich();const i=db.ordens.findIndex(x=>x.id===os.id);if(i>=0)db.ordens[i]=structuredClone(os);else{db.ordens.unshift(structuredClone(os));db.sequencia++}save(db);$('id').value=os.id;$('saveStatus').textContent='Salva às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});renderHistory();renderPages();toast('OS salva.');return os}function validate() {
+  syncBaseFromForm();
+  syncActiveEquipmentFromDom();
+
+  if (!os.cliente.nome) {
+    return 'Informe o cliente.';
+  }
+
+  for (let indice = 0; indice < os.equipamentos.length; indice += 1) {
+    const equipamento = os.equipamentos[indice];
+
+    if (!equipamento.nome) {
+      return `Informe o nome do equipamento ${indice + 1}.`;
+    }
+
+    if (!equipamento.diagnostico) {
+      return `Informe o diagnóstico do equipamento ${indice + 1}.`;
+    }
+
+    if (!equipamento.conclusao) {
+      return `Informe a conclusão do equipamento ${indice + 1}.`;
+    }
+  }
+
+  return '';
+}async function ensure(){const x=validate();if(x)throw new Error(x);return persist()}
 function renderHistory(q=''){q=q.toLowerCase();const list=db.ordens.filter(x=>[x.numero,x.cliente?.nome,...x.equipamentos.map(e=>e.nome)].join(' ').toLowerCase().includes(q));$('historicoLista').innerHTML=list.length?list.map(x=>`<div class="history-item"><div><strong>OS ${esc(x.numero)} — ${esc(x.cliente.nome)}</strong><small>${x.equipamentos.length} equipamento(s)</small></div><div class="history-actions"><button data-open="${x.id}">Abrir</button><button class="danger" data-del="${x.id}">Excluir</button></div></div>`).join(''):'<p>Nenhuma OS encontrada.</p>'}function readImages(fs,max){return Promise.all([...fs].slice(0,max).map(f=>new Promise((resolve,reject)=>{if(f.size>4*1024*1024)return reject(new Error('Imagem acima de 4 MB.'));const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(f)})))}
-$('laudoForm').addEventListener('input',e=>{if(!e.target.closest('#equipmentEditor'))renderPages()});$('laudoForm').onsubmit=async e=>{e.preventDefault();try{await ensure()}catch(x){toast(x.message)}};$('equipmentTabs').onclick=e=>{if(e.target.dataset.tab!==undefined){active=+e.target.dataset.tab;renderTabs();renderEditor()}};$('btnAddEquip').onclick=()=>{if(os.equipamentos.length>=5)return toast('Limite de 5 equipamentos por OS.');os.equipamentos.push(emptyEq());active=os.equipamentos.length-1;renderAll()};$('btnNovo').onclick=()=>{if(confirm('Criar uma nova OS?'))newOs()};$('btnHistorico').onclick=()=>{$('historicoDialog').showModal();renderHistory()};$('btnConfig').onclick=()=>{const c=db.config;['empresaNome','empresaDocumento','empresaTelefone','empresaEmail','empresaEndereco','logoPosicao','marcaAgua'].forEach(k=>$(k).value=c[k]||'');$('configDialog').showModal()};document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());$('busca').oninput=e=>renderHistory(e.target.value);$('historicoLista').onclick=e=>{const id=e.target.dataset.open||e.target.dataset.del;if(!id)return;if(e.target.dataset.del){if(confirm('Excluir esta OS?')){db.ordens=db.ordens.filter(x=>x.id!==id);save(db);renderHistory()}return}os=structuredClone(db.ordens.find(x=>x.id===id));active=0;syncBaseToForm();renderAll();$('historicoDialog').close()};$('configForm').onsubmit=async e=>{e.preventDefault();['empresaNome','empresaDocumento','empresaTelefone','empresaEmail','empresaEndereco','logoPosicao','marcaAgua'].forEach(k=>db.config[k]=$(k).value.trim());const f=$('logoInput').files[0];if(f)db.config.logo=(await readImages([f],1))[0];save(db);renderPages();$('configDialog').close();toast('Configurações salvas.')};$('btnExportar').onclick=()=>exportBackup(db);$('importarArquivo').onchange=async e=>{try{const d=await importBackup(e.target.files[0]);if(confirm('Substituir os dados atuais pelo backup?')){db=d;delete db.exportadoEm;save(db);newOs();$('configDialog').close();toast('Backup importado.')}}catch(x){alert(x.message)}e.target.value=''};$('btnTxt').onclick=async()=>{try{downloadTxt(await ensure(),db.config)}catch(x){toast(x.message)}};$('btnPdf').onclick=async()=>{try{const x=await ensure();await makePdf($('documentPages'),`Laudo-OS-${x.numero}.pdf`);toast('PDF gerado.')}catch(x){toast(x.message)}};$('btnPrint').onclick=async()=>{try{await ensure();printDocument()}catch(x){toast(x.message)}};$('btnPdfEmail').onclick=async()=>{try{const x=await ensure();await makePdf($('documentPages'),`Laudo-OS-${x.numero}.pdf`);alert('PDF baixado. Anexe-o manualmente ao e-mail que será aberto.');prepareEmail(x,db.config.empresaEmail||'fsbatepap@gmail.com')}catch(x){toast(x.message)}};newOs();renderHistory();
+$('laudoForm').addEventListener('input',e=>{if(!e.target.closest('#equipmentEditor'))renderPages()});$('laudoForm').onsubmit=async e=>{e.preventDefault();try{await ensure()}catch(x){toast(x.message)}};$('equipmentTabs').onclick = (evento) => {
+  if (evento.target.dataset.tab === undefined) return;
+
+  syncActiveEquipmentFromDom();
+  active = Number(evento.target.dataset.tab);
+  renderTabs();
+  renderEditor();
+  renderPages();
+};$('btnAddEquip').onclick = () => {
+  syncActiveEquipmentFromDom();
+
+  if (os.equipamentos.length >= 5) {
+    toast('Limite de 5 equipamentos por OS.');
+    return;
+  }
+
+  os.equipamentos.push(emptyEq());
+  active = os.equipamentos.length - 1;
+  renderAll();
+};$('btnNovo').onclick=()=>{if(confirm('Criar uma nova OS?'))newOs()};$('btnHistorico').onclick=()=>{$('historicoDialog').showModal();renderHistory()};$('btnConfig').onclick=()=>{const c=db.config;['empresaNome','empresaDocumento','empresaTelefone','empresaEmail','empresaEndereco','logoPosicao','marcaAgua'].forEach(k=>$(k).value=c[k]||'');$('configDialog').showModal()};document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());$('busca').oninput=e=>renderHistory(e.target.value);$('historicoLista').onclick=e=>{const id=e.target.dataset.open||e.target.dataset.del;if(!id)return;if(e.target.dataset.del){if(confirm('Excluir esta OS?')){db.ordens=db.ordens.filter(x=>x.id!==id);save(db);renderHistory()}return}os=structuredClone(db.ordens.find(x=>x.id===id));active=0;syncBaseToForm();renderAll();$('historicoDialog').close()};$('configForm').onsubmit=async e=>{e.preventDefault();['empresaNome','empresaDocumento','empresaTelefone','empresaEmail','empresaEndereco','logoPosicao','marcaAgua'].forEach(k=>db.config[k]=$(k).value.trim());const f=$('logoInput').files[0];if(f)db.config.logo=(await readImages([f],1))[0];save(db);renderPages();$('configDialog').close();toast('Configurações salvas.')};$('btnExportar').onclick=()=>exportBackup(db);$('importarArquivo').onchange=async e=>{try{const d=await importBackup(e.target.files[0]);if(confirm('Substituir os dados atuais pelo backup?')){db=d;delete db.exportadoEm;save(db);newOs();$('configDialog').close();toast('Backup importado.')}}catch(x){alert(x.message)}e.target.value=''};$('btnTxt').onclick=async()=>{try{downloadTxt(await ensure(),db.config)}catch(x){toast(x.message)}};$('btnPdf').onclick=async()=>{try{const x=await ensure();await makePdf($('documentPages'),`Laudo-OS-${x.numero}.pdf`);toast('PDF gerado.')}catch(x){toast(x.message)}};$('btnPrint').onclick=async()=>{try{await ensure();printDocument()}catch(x){toast(x.message)}};$('btnPdfEmail').onclick=async()=>{try{const x=await ensure();await makePdf($('documentPages'),`Laudo-OS-${x.numero}.pdf`);alert('PDF baixado. Anexe-o manualmente ao e-mail que será aberto.');prepareEmail(x,db.config.empresaEmail||'fsbatepap@gmail.com')}catch(x){toast(x.message)}};newOs();renderHistory();
