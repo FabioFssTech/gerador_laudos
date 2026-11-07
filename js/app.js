@@ -1,114 +1,13 @@
-import {load,save,nextNumber,uid} from './storage.js';
-import {sha256,canonical,shortHash} from './hash.js';
-import {downloadBackup,readBackup} from './backup.js';
-import {makePdf,printDocument} from './pdf.js';
-import {prepareEmail} from './email.js';
-import {baixarTxtLaudo} from './txt.js';
-
-let db=load(), fotos=[];
-const $=id=>document.getElementById(id);
-const fields=['id','numero','data','hora','clienteNome','clienteDocumento','clienteTelefone','clienteEmail','clienteEndereco','equipamento','marcaModelo','numeroSerie','problema','defeito','diagnostico','procedimentos','pecas','conclusao','valor','responsavel','observacoes'];
-const esc = valor =>
-  String(valor ?? '').replace(
-    /[&<>"']/g,
-    caractere =>
-      ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-      })[caractere]
-  );
-function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2400)}
-function today(){const d=new Date(),p=n=>String(n).padStart(2,'0');return {date:`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`,time:`${p(d.getHours())}:${p(d.getMinutes())}`}}
-function collect(){const o={};fields.forEach(k=>o[k]=$(k).value.trim());o.fotos=fotos;o.atualizadoEm=new Date().toISOString();return o}
-function setForm(o={}){fields.forEach(k=>$(k).value=o[k]||'');fotos=o.fotos||[];renderThumbs();render()}
-function newDoc(){const t=today();setForm({id:'',numero:nextNumber(db),data:t.date,hora:t.time,responsavel:db.config.empresaNome||'',fotos:[]});$('saveStatus').textContent='Novo documento'}
-async function enrich(o){o.id=o.id||uid();o.codigo=`OS-${o.numero}`;o.hash=await sha256(canonical(o));o.codigo=`${o.numero}-${o.hash.slice(0,8)}`;return o}
-async function persist(){let o=await enrich(collect());const i=db.laudos.findIndex(x=>x.id===o.id);if(i>=0)db.laudos[i]=o;else{db.laudos.unshift(o);db.sequencia=(db.sequencia||1)+1}save(db);$('id').value=o.id;$('saveStatus').textContent='Salvo em '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});renderHistory();render();toast('Laudo salvo.');return o}
-function info(label,val){return val?`<div><b>${esc(label)}</b>${esc(val)}</div>`:''}
-function block(label,val){return val?`<div class="doc-block"><b>${esc(label)}</b>${esc(val)}</div>`:''}
-async function render(){const o=collect(),c=db.config;$('wm').textContent=c.marcaAgua||'DOCUMENTO ORIGINAL';$('docEmpresa').textContent=c.empresaNome||'Nome da empresa / profissional';$('docEmpresaDados').textContent=[c.empresaDocumento,c.telefone,c.empresaTelefone,c.empresaEmail,c.empresaEndereco].filter(Boolean).join(' • ');$('docNumero').textContent=`OS ${o.numero||''}`;$('docEmissao').textContent=`Emissão: ${o.data||''} ${o.hora||''}`;$('docCodigo').textContent=o.numero?`Código: OS-${o.numero}`:'';$('docCliente').innerHTML=info('Nome',o.clienteNome)+info('CPF/CNPJ',o.clienteDocumento)+info('Telefone',o.clienteTelefone)+info('E-mail',o.clienteEmail)+info('Endereço',o.clienteEndereco);$('docEquipamento').innerHTML=info('Equipamento',o.equipamento)+info('Marca / Modelo',o.marcaModelo)+info('Número de série',o.numeroSerie);$('docConteudo').innerHTML=block('Problema relatado',o.problema)+block('Defeito constatado',o.defeito)+block('Diagnóstico',o.diagnostico)+block('Procedimentos realizados',o.procedimentos)+block('Peças utilizadas',o.pecas)+block('Conclusão técnica',o.conclusao)+block('Valor',o.valor?`R$ ${o.valor}`:'')+block('Responsável técnico',o.responsavel)+block('Observações',o.observacoes);$('docFotos').innerHTML=fotos.map(x=>`<img src="${x}" alt="Foto do serviço">`).join('');$('docRodape').textContent=`Documento emitido em ${o.data||''} às ${o.hora||''}`;if(o.numero){const h=await sha256(canonical(o));$('docHash').textContent=`Hash: ${shortHash(h)}`}else $('docHash').textContent='';const img=$('docLogo');if(c.logo){img.src=c.logo;img.style.display='block'}else img.style.display='none';$('documento').querySelector('.doc-header').classList.toggle('logo-right',c.logoPosicao==='right')}
-function renderThumbs(){$('fotoLista').innerHTML=fotos.map((x,i)=>`<div><img src="${x}"><button type="button" data-rm="${i}">×</button></div>`).join('')}
-function renderHistory(q=''){q=q.toLowerCase();const list=db.laudos.filter(x=>[x.numero,x.clienteNome,x.equipamento].join(' ').toLowerCase().includes(q));$('historicoLista').innerHTML=list.length?list.map(x=>`<div class="history-item"><div><strong>OS ${esc(x.numero)} — ${esc(x.clienteNome)}</strong><p>${esc(x.equipamento)} • ${esc(x.data)}</p></div><div class="history-actions"><button data-edit="${x.id}">Abrir</button><button data-dup="${x.id}">Duplicar</button><button class="danger" data-del="${x.id}">Excluir</button></div></div>`).join(''):'<p class="muted">Nenhum laudo encontrado.</p>'}
-function fillConfig(){const c=db.config;['empresaNome','empresaDocumento','empresaTelefone','empresaEmail','empresaEndereco','logoPosicao','marcaAgua'].forEach(k=>$(k).value=c[k]||'')}
-function readImages(fileList){return Promise.all([...fileList].slice(0,6).map(file=>new Promise((res,rej)=>{if(file.size>4*1024*1024)return rej(new Error('Cada foto deve ter no máximo 4 MB.'));const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})))}
-
-$('laudoForm').addEventListener('input',render);$('laudoForm').addEventListener('submit',async e=>{e.preventDefault();await persist()});
-$('fotos').addEventListener('change',async e=>{try{fotos=[...fotos,...await readImages(e.target.files)].slice(0,6);renderThumbs();render()}catch(err){toast(err.message)}});
-$('fotoLista').addEventListener('click',e=>{if(e.target.dataset.rm!==undefined){fotos.splice(+e.target.dataset.rm,1);renderThumbs();render()}});
-$('btnNovo').onclick=()=>{if(confirm('Iniciar um novo laudo?'))newDoc()};$('btnHistorico').onclick=()=>{$('historicoDialog').showModal();renderHistory()};$('btnConfig').onclick=()=>{fillConfig();$('configDialog').showModal()};$('btnPrint').onclick=printDocument;
-document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());$('busca').oninput=e=>renderHistory(e.target.value);
-$('historicoLista').onclick=e=>{const id=e.target.dataset.edit||e.target.dataset.dup||e.target.dataset.del;if(!id)return;const o=db.laudos.find(x=>x.id===id);if(e.target.dataset.del){if(confirm('Excluir este laudo?')){db.laudos=db.laudos.filter(x=>x.id!==id);save(db);renderHistory();toast('Laudo excluído.')}return}const copy=structuredClone(o);if(e.target.dataset.dup){copy.id='';copy.numero=nextNumber(db);const t=today();copy.data=t.date;copy.hora=t.time}setForm(copy);$('historicoDialog').close();window.scrollTo({top:0,behavior:'smooth'})};
-$('configForm').onsubmit=async e=>{e.preventDefault();['empresaNome','empresaDocumento','empresaTelefone','empresaEmail','empresaEndereco','logoPosicao','marcaAgua'].forEach(k=>db.config[k]=$(k).value.trim());const f=$('logoInput').files[0];if(f){db.config.logo=(await readImages([f]))[0]}save(db);render();$('configDialog').close();toast('Configurações salvas.')};
-$('btnExportar').onclick=()=>downloadBackup(db);$('importarArquivo').onchange=async e=>{try{const imported=await readBackup(e.target.files[0]);if(confirm(`Importar ${imported.laudos.length} laudo(s) e substituir os dados atuais?`)){db=imported;delete db.exportadoEm;save(db);newDoc();renderHistory();$('configDialog').close();toast('Backup importado.')}}catch(err){alert(err.message)}e.target.value=''};
-async function ensureSaved() {
-  if (
-    !$('clienteNome').value ||
-    !$('equipamento').value ||
-    !$('diagnostico').value ||
-    !$('conclusao').value ||
-    !$('responsavel').value
-  ) {
-    $('laudoForm').reportValidity();
-    throw new Error('Preencha os campos obrigatórios.');
-  }
-
-  return await persist();
-}
-
-$('btnTxt').onclick = async () => {
-  try {
-    const laudo = await ensureSaved();
-    baixarTxtLaudo(laudo, db.config);
-    toast('Arquivo TXT gerado.');
-  } catch (erro) {
-    toast(erro.message);
-  }
-};
-
-$('btnPdf').onclick = async () => {
-  try {
-    const laudo = await ensureSaved();
-
-    await makePdf(
-      $('documento'),
-      `Laudo-OS-${laudo.numero}.pdf`
-    );
-
-    toast('PDF gerado.');
-  } catch (erro) {
-    toast(erro.message);
-  }
-};
-
-$('btnPdfEmail').onclick = async () => {
-  try {
-    const laudo = await ensureSaved();
-
-    await makePdf(
-      $('documento'),
-      `Laudo-OS-${laudo.numero}.pdf`
-    );
-
-    alert(
-      'O PDF foi baixado. Seu aplicativo de e-mail será aberto. ' +
-      'Anexe manualmente o PDF recém-baixado.'
-    );
-
-    prepareEmail(
-      laudo,
-      db.config.empresaEmail || 'fsbatepap@gmail.com'
-    );
-  } catch (erro) {
-    toast(erro.message);
-  }
-};
-
-newDoc();
-renderHistory();
-
-$('btnPdf').onclick=async()=>{try{const o=await ensureSaved();await makePdf($('documento'),`Laudo-OS-${o.numero}.pdf`);toast('PDF gerado.')}catch(e){toast(e.message)}};
-$('btnPdfEmail').onclick=async()=>{try{const o=await ensureSaved();await makePdf($('documento'),`Laudo-OS-${o.numero}.pdf`);alert('O PDF foi baixado. Seu aplicativo de e-mail será aberto; anexe manualmente o PDF recém-baixado.');prepareEmail(o,db.config.empresaEmail||'fsbatepap@gmail.com')}catch(e){toast(e.message)}};
-newDoc();renderHistory();
+import {load,save,nextNumber,uid} from './storage.js';import {sha256,canonical,shortHash} from './hash.js';import {exportBackup,importBackup} from './backup.js';import {makePdf,printDocument} from './pdf.js';import {downloadTxt} from './txt.js';import {prepareEmail} from './email.js';
+let db=load(),os=null,active=0;const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),num=v=>Number(String(v??0).replace(',','.'))||0,money=n=>num(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});function toast(m){$('toast').textContent=m;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2200)}function now(){const d=new Date(),p=n=>String(n).padStart(2,'0');return{data:`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`,hora:`${p(d.getHours())}:${p(d.getMinutes())}`}}function emptyEq(){return{id:uid(),nome:'',marcaModelo:'',numeroSerie:'',problema:'',defeito:'',diagnostico:'',procedimentos:'',conclusao:'',maoDeObra:0,pecas:[],fotos:[]}}function newOs(){const t=now();os={id:'',numero:nextNumber(db),data:t.data,hora:t.hora,cliente:{nome:'',documento:'',telefone:'',email:'',endereco:''},equipamentos:[emptyEq()],hash:'',codigo:''};active=0;syncBaseToForm();renderAll();$('saveStatus').textContent='Nova OS'}
+function syncBaseFromForm(){os.id=$('id').value;os.numero=$('numero').value.trim();os.data=$('data').value;os.hora=$('hora').value;os.cliente={nome:$('clienteNome').value.trim(),documento:$('clienteDocumento').value.trim(),telefone:$('clienteTelefone').value.trim(),email:$('clienteEmail').value.trim(),endereco:$('clienteEndereco').value.trim()}}function syncBaseToForm(){$('id').value=os.id||'';$('numero').value=os.numero||'';$('data').value=os.data||'';$('hora').value=os.hora||'';$('clienteNome').value=os.cliente.nome||'';$('clienteDocumento').value=os.cliente.documento||'';$('clienteTelefone').value=os.cliente.telefone||'';$('clienteEmail').value=os.cliente.email||'';$('clienteEndereco').value=os.cliente.endereco||''}
+function pieceTotal(p){return num(p.quantidade)*num(p.valorUnitario)}function calcEq(e){e.totalPecas=e.pecas.reduce((s,p)=>s+pieceTotal(p),0);return e.totalPecas}function renderTabs(){$('equipmentTabs').innerHTML=os.equipamentos.map((e,i)=>`<button type="button" class="tab ${i===active?'active':''}" data-tab="${i}">${i+1}. ${esc(e.nome||'Novo equipamento')}</button>`).join('')}
+function renderEditor(){const e=os.equipamentos[active];$('equipmentEditor').innerHTML=`<div class="equipment-card"><div class="equipment-actions">${os.equipamentos.length>1?'<button type="button" class="danger" id="btnRemoveEquip">Remover equipamento</button>':''}</div><div class="grid cols-3"><label>Equipamento<input data-eq="nome" value="${esc(e.nome)}" required></label><label>Marca / Modelo<input data-eq="marcaModelo" value="${esc(e.marcaModelo)}"></label><label>Número de série<input data-eq="numeroSerie" value="${esc(e.numeroSerie)}"></label></div><label>Problema relatado<textarea data-eq="problema" rows="2">${esc(e.problema)}</textarea></label><label>Defeito constatado<textarea data-eq="defeito" rows="2">${esc(e.defeito)}</textarea></label><label>Diagnóstico<textarea data-eq="diagnostico" rows="3" required>${esc(e.diagnostico)}</textarea></label><label>Procedimentos realizados<textarea data-eq="procedimentos" rows="3">${esc(e.procedimentos)}</textarea></label><h2>Peças utilizadas</h2><div id="pieceRows">${e.pecas.map((p,i)=>pieceHtml(p,i)).join('')}</div><button type="button" id="btnAddPiece">+ Adicionar peça</button><label>Conclusão técnica<textarea data-eq="conclusao" rows="3" required>${esc(e.conclusao)}</textarea></label><label>Valor da mão de obra (R$)<input data-eq="maoDeObra" inputmode="decimal" value="${esc(e.maoDeObra||'')}"></label><p><strong>Total das peças deste equipamento:</strong> <span id="eqPartsTotal">${money(calcEq(e))}</span></p><label>Fotos (até 4 por equipamento)<input id="eqFotos" type="file" accept="image/*" multiple></label><div class="thumbs">${e.fotos.map((x,i)=>`<div class="thumb"><img src="${x}"><button type="button" data-rm-photo="${i}">×</button></div>`).join('')}</div></div>`;bindEditor()}
+function pieceHtml(p,i){return `<div class="piece-row" data-piece="${i}"><label>Quantidade<input data-p="quantidade" type="number" min="0" step="1" value="${esc(p.quantidade)}"></label><label>Descrição<input data-p="descricao" value="${esc(p.descricao)}"></label><label>Valor unitário<input data-p="valorUnitario" inputmode="decimal" value="${esc(p.valorUnitario)}"></label><button type="button" class="danger" data-rm-piece="${i}">Excluir</button><div class="piece-subtotal">Subtotal: ${money(pieceTotal(p))}</div></div>`}
+function bindEditor(){$('equipmentEditor').querySelectorAll('[data-eq]').forEach(el=>el.addEventListener('input',()=>{os.equipamentos[active][el.dataset.eq]=el.dataset.eq==='maoDeObra'?num(el.value):el.value;renderTabs();renderPages()}));$('equipmentEditor').querySelectorAll('[data-p]').forEach(el=>el.addEventListener('input',()=>{const i=+el.closest('[data-piece]').dataset.piece,p=os.equipamentos[active].pecas[i];p[el.dataset.p]=el.dataset.p==='descricao'?el.value:num(el.value);renderEditor();renderPages()}));$('btnAddPiece').onclick=()=>{os.equipamentos[active].pecas.push({quantidade:1,descricao:'',valorUnitario:0});renderEditor();renderPages()};$('equipmentEditor').querySelectorAll('[data-rm-piece]').forEach(b=>b.onclick=()=>{os.equipamentos[active].pecas.splice(+b.dataset.rmPiece,1);renderEditor();renderPages()});$('btnRemoveEquip')&&($('btnRemoveEquip').onclick=()=>{if(confirm('Remover este equipamento?')){os.equipamentos.splice(active,1);active=Math.max(0,active-1);renderAll()}});$('eqFotos').onchange=async e=>{const imgs=await readImages(e.target.files,4);os.equipamentos[active].fotos=[...os.equipamentos[active].fotos,...imgs].slice(0,4);renderEditor();renderPages()};$('equipmentEditor').querySelectorAll('[data-rm-photo]').forEach(b=>b.onclick=()=>{os.equipamentos[active].fotos.splice(+b.dataset.rmPhoto,1);renderEditor();renderPages()})}
+function header(title,sub){const c=db.config,logo=c.logo?`<img src="${c.logo}" alt="Logo">`:'<span></span>';return `<div class="watermark">${esc(c.marcaAgua||'DOCUMENTO ORIGINAL')}</div><div class="page-content"><header class="doc-header ${c.logoPosicao==='right'?'logo-right':''}">${logo}<div class="doc-company"><strong>${esc(c.empresaNome||'Empresa / profissional')}</strong><span>${esc([c.empresaDocumento,c.empresaTelefone,c.empresaEmail,c.empresaEndereco].filter(Boolean).join(' • '))}</span></div><div class="doc-title"><h1>${title}</h1><b>${sub}</b></div></header><div class="doc-meta"><span>Emissão: ${esc(os.data)} ${esc(os.hora)}</span><span>OS ${esc(os.numero)}</span></div>`}function clientHtml(){const c=os.cliente;return `<section><h3>Dados do cliente</h3><div class="doc-grid">${inf('Nome',c.nome)}${inf('CPF/CNPJ',c.documento)}${inf('Telefone',c.telefone)}${inf('E-mail',c.email)}${inf('Endereço',c.endereco)}</div></section>`}function inf(l,v){return v?`<div><b>${esc(l)}</b>${esc(v)}</div>`:''}function block(l,v){return v?`<div class="doc-block"><b>${esc(l)}</b>${esc(v)}</div>`:''}function footer(i,total){return `<div class="doc-footer"><span>Página ${i} de ${total}</span><span>Hash: ${shortHash(os.hash)}</span></div></div>`}
+function equipmentPage(e,i,total){calcEq(e);const rows=e.pecas.length?e.pecas.map(p=>`<tr><td>${esc(p.quantidade)}</td><td>${esc(p.descricao)}</td><td class="money">${money(p.valorUnitario)}</td><td class="money">${money(pieceTotal(p))}</td></tr>`).join(''):'<tr><td colspan="4">Nenhuma peça informada</td></tr>';return `<article class="a4-page">${header('LAUDO TÉCNICO',`OS ${esc(os.numero)} • Equipamento ${i+1}`)}${clientHtml()}<section><h3>Identificação do equipamento</h3><div class="doc-grid">${inf('Equipamento',e.nome)}${inf('Marca / Modelo',e.marcaModelo)}${inf('Número de série',e.numeroSerie)}</div></section><section><h3>Informações técnicas</h3>${block('Problema relatado',e.problema)}${block('Defeito constatado',e.defeito)}${block('Diagnóstico',e.diagnostico)}${block('Procedimentos realizados',e.procedimentos)}${block('Conclusão técnica',e.conclusao)}</section><section><h3>Peças utilizadas</h3><table class="parts-table"><thead><tr><th>Qtd.</th><th>Descrição</th><th>Unitário</th><th>Subtotal</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><th colspan="3">Total das peças</th><th class="money">${money(e.totalPecas)}</th></tr></tfoot></table><div class="doc-block"><b>Mão de obra</b>${money(e.maoDeObra)}</div></section>${e.fotos.length?`<section><h3>Fotos</h3><div class="doc-photos">${e.fotos.map(x=>`<img src="${x}" alt="Foto do serviço">`).join('')}</div></section>`:''}<div class="signatures"><div><span></span><p>Responsável técnico</p></div><div><span></span><p>Cliente / responsável</p></div></div>${footer(i+1,total)}</article>`}
+function summaryPage(total){let tp=0,tm=0;const items=os.equipamentos.map((e,i)=>{calcEq(e);tp+=e.totalPecas;tm+=num(e.maoDeObra);return `<div class="summary-item"><h4>Equipamento ${i+1}: ${esc(e.nome||'Não informado')}</h4>${block('Procedimentos realizados',e.procedimentos)}${block('Peças utilizadas',e.pecas.map(p=>`${p.quantidade}x ${p.descricao} (${money(pieceTotal(p))})`).join('; ')||'Nenhuma')}${block('Conclusão técnica',e.conclusao)}<div class="doc-grid">${inf('Mão de obra',money(e.maoDeObra))}${inf('Total das peças',money(e.totalPecas))}</div></div>`}).join('');return `<article class="a4-page">${header('RELATÓRIO FINAL',`OS ${esc(os.numero)}`)}${clientHtml()}<section><h3>Resumo dos equipamentos</h3>${items}</section><section><h3>Resumo financeiro</h3><table class="totals"><tr><td>Total da mão de obra</td><td>${money(tm)}</td></tr><tr><td>Total das peças</td><td>${money(tp)}</td></tr><tr><td>Valor geral da OS</td><td>${money(tm+tp)}</td></tr></table></section><div class="signatures"><div><span></span><p>Responsável técnico</p></div><div><span></span><p>Cliente / responsável</p></div></div>${footer(total,total)}</article>`}
+function renderPages(){syncBaseFromForm();const total=os.equipamentos.length+1;$('documentPages').innerHTML=os.equipamentos.map((e,i)=>equipmentPage(e,i,total)).join('')+summaryPage(total)}function renderAll(){renderTabs();renderEditor();renderPages()}async function enrich(){syncBaseFromForm();os.id=os.id||uid();os.equipamentos.forEach(calcEq);os.codigo=`${os.numero}`;os.hash=await sha256(canonical(os));os.atualizadoEm=new Date().toISOString();return os}async function persist(){await enrich();const i=db.ordens.findIndex(x=>x.id===os.id);if(i>=0)db.ordens[i]=structuredClone(os);else{db.ordens.unshift(structuredClone(os));db.sequencia++}save(db);$('id').value=os.id;$('saveStatus').textContent='Salva às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});renderHistory();renderPages();toast('OS salva.');return os}function validate(){syncBaseFromForm();if(!os.cliente.nome)return'Informe o cliente.';for(let i=0;i<os.equipamentos.length;i++){const e=os.equipamentos[i];if(!e.nome||!e.diagnostico||!e.conclusao)return`Preencha equipamento, diagnóstico e conclusão do equipamento ${i+1}.`}return''}async function ensure(){const x=validate();if(x)throw new Error(x);return persist()}
+function renderHistory(q=''){q=q.toLowerCase();const list=db.ordens.filter(x=>[x.numero,x.cliente?.nome,...x.equipamentos.map(e=>e.nome)].join(' ').toLowerCase().includes(q));$('historicoLista').innerHTML=list.length?list.map(x=>`<div class="history-item"><div><strong>OS ${esc(x.numero)} — ${esc(x.cliente.nome)}</strong><small>${x.equipamentos.length} equipamento(s)</small></div><div class="history-actions"><button data-open="${x.id}">Abrir</button><button class="danger" data-del="${x.id}">Excluir</button></div></div>`).join(''):'<p>Nenhuma OS encontrada.</p>'}function readImages(fs,max){return Promise.all([...fs].slice(0,max).map(f=>new Promise((resolve,reject)=>{if(f.size>4*1024*1024)return reject(new Error('Imagem acima de 4 MB.'));const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(f)})))}
+$('laudoForm').addEventListener('input',e=>{if(!e.target.closest('#equipmentEditor'))renderPages()});$('laudoForm').onsubmit=async e=>{e.preventDefault();try{await ensure()}catch(x){toast(x.message)}};$('equipmentTabs').onclick=e=>{if(e.target.dataset.tab!==undefined){active=+e.target.dataset.tab;renderTabs();renderEditor()}};$('btnAddEquip').onclick=()=>{if(os.equipamentos.length>=5)return toast('Limite de 5 equipamentos por OS.');os.equipamentos.push(emptyEq());active=os.equipamentos.length-1;renderAll()};$('btnNovo').onclick=()=>{if(confirm('Criar uma nova OS?'))newOs()};$('btnHistorico').onclick=()=>{$('historicoDialog').showModal();renderHistory()};$('btnConfig').onclick=()=>{const c=db.config;['empresaNome','empresaDocumento','empresaTelefone','empresaEmail','empresaEndereco','logoPosicao','marcaAgua'].forEach(k=>$(k).value=c[k]||'');$('configDialog').showModal()};document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());$('busca').oninput=e=>renderHistory(e.target.value);$('historicoLista').onclick=e=>{const id=e.target.dataset.open||e.target.dataset.del;if(!id)return;if(e.target.dataset.del){if(confirm('Excluir esta OS?')){db.ordens=db.ordens.filter(x=>x.id!==id);save(db);renderHistory()}return}os=structuredClone(db.ordens.find(x=>x.id===id));active=0;syncBaseToForm();renderAll();$('historicoDialog').close()};$('configForm').onsubmit=async e=>{e.preventDefault();['empresaNome','empresaDocumento','empresaTelefone','empresaEmail','empresaEndereco','logoPosicao','marcaAgua'].forEach(k=>db.config[k]=$(k).value.trim());const f=$('logoInput').files[0];if(f)db.config.logo=(await readImages([f],1))[0];save(db);renderPages();$('configDialog').close();toast('Configurações salvas.')};$('btnExportar').onclick=()=>exportBackup(db);$('importarArquivo').onchange=async e=>{try{const d=await importBackup(e.target.files[0]);if(confirm('Substituir os dados atuais pelo backup?')){db=d;delete db.exportadoEm;save(db);newOs();$('configDialog').close();toast('Backup importado.')}}catch(x){alert(x.message)}e.target.value=''};$('btnTxt').onclick=async()=>{try{downloadTxt(await ensure(),db.config)}catch(x){toast(x.message)}};$('btnPdf').onclick=async()=>{try{const x=await ensure();await makePdf($('documentPages'),`Laudo-OS-${x.numero}.pdf`);toast('PDF gerado.')}catch(x){toast(x.message)}};$('btnPrint').onclick=async()=>{try{await ensure();printDocument()}catch(x){toast(x.message)}};$('btnPdfEmail').onclick=async()=>{try{const x=await ensure();await makePdf($('documentPages'),`Laudo-OS-${x.numero}.pdf`);alert('PDF baixado. Anexe-o manualmente ao e-mail que será aberto.');prepareEmail(x,db.config.empresaEmail||'fsbatepap@gmail.com')}catch(x){toast(x.message)}};newOs();renderHistory();
